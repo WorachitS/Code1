@@ -1,0 +1,90 @@
+import subprocess
+import csv
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
+
+input_file = ""IP.csv""
+output_file = f""ping_log_{datetime.now().strftime('%Y%m%d')}.csv""
+
+# Threshold (ปรับได้)
+WARN_MS = 200
+CRITICAL_MS = 500
+
+# อ่าน IP list
+ips = []
+with open(input_file, ""r"", encoding=""utf-8"") as f:
+    for line in f:
+        ip = line.strip()
+        if ip:
+            ips.append(ip)
+
+def ping_ip(ip):
+    timestamp = datetime.now().strftime(""%Y-%m-%d %H:%M:%S"")
+    status = ""UNKNOWN""
+    response_time = """"
+
+    try:
+        result = subprocess.run(
+            [""ping"", ""-n"", ""1"", ""-w"", ""1000"", ip],
+            capture_output=True,
+            text=True
+        )
+
+        output_text = result.stdout
+
+        for line in output_text.splitlines():
+            line = line.strip()
+
+            if ""Request timed out"" in line:
+                status = ""DOWN""
+                break
+
+            elif ""Destination host unreachable"" in line:
+                status = ""UNREACHABLE""
+                break
+
+            elif ""Reply from"" in line and ""time="" in line:
+                # ดึงค่า ms
+                try:
+                    time_part = line.split(""time="")[1]
+                    ms = time_part.replace(""ms"", """").strip()
+                    response_time = int(ms)
+
+                    if response_time < WARN_MS:
+                        status = ""OK""
+                    elif WARN_MS <= response_time < CRITICAL_MS:
+                        status = ""WARN""
+                    else:
+                        status = ""CRITICAL""
+                except:
+                    status = ""OK""
+
+                break
+
+    except Exception as e:
+        status = f""ERROR""
+
+    print(f""{timestamp} | {ip} | {status} | {response_time}"")
+    
+    return {
+        ""Timestamp"": timestamp,
+        ""IP"": ip,
+        ""Status"": status,
+        ""Response_ms"": response_time
+    }
+
+results = []
+
+with ThreadPoolExecutor(max_workers=10) as executor:
+    futures = [executor.submit(ping_ip, ip) for ip in ips]
+    for future in as_completed(futures):
+        results.append(future.result())
+
+# เขียน CSV
+with open(output_file, ""w"", newline="""", encoding=""utf-8"") as f:
+    fieldnames = [""Timestamp"", ""IP"", ""Status"", ""Response_ms""]
+    writer = csv.DictWriter(f, fieldnames=fieldnames)
+    writer.writeheader()
+    writer.writerows(results)
+
+print(""Finished. Output:"", output_file)
