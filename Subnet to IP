@@ -1,0 +1,55 @@
+import csv
+import ipaddress
+import os
+import re
+
+input_file = 'Subnet.csv'     # ไฟล์ input
+
+# Regex สำหรับ subnet
+subnet_pattern = r'\b(?:\d{1,3}\.){3}\d{1,3}/\d{1,2}\b'
+
+def extract_subnets_by_regex(row):
+    joined = ' '.join(row)
+    return re.findall(subnet_pattern, joined)
+
+seen_subnets = set()
+
+with open(input_file, newline='', encoding='latin1') as infile:
+    reader = csv.reader(infile)
+
+    line_number = 0
+    for row in reader:
+        line_number += 1
+
+        if not row:
+            continue
+
+        description = row[1] if len(row) > 1 else """"
+        subnets = extract_subnets_by_regex(row)
+
+        for subnet in subnets:
+
+            if subnet in seen_subnets:
+                continue
+
+            seen_subnets.add(subnet)
+
+            try:
+                network = ipaddress.ip_network(subnet, strict=False)
+
+                safe_subnet = subnet.replace('/', '-')
+                output_file = f""{safe_subnet}.csv""
+
+                with open(output_file, 'w', newline='', encoding='utf-8') as outfile:
+                    writer = csv.writer(outfile)
+                    writer.writerow(['IP', 'Subnet', 'Description'])
+
+                    for ip in network:
+                        writer.writerow([str(ip), subnet, description])
+
+                print(f""✔ Created file: {output_file}"")
+
+            except ValueError as e:
+                print(f""[ERROR] Subnet '{subnet}' invalid at line {line_number}: {e}"")
+
+print(f""\n🎉 เสร็จแล้ว! สร้างทั้งหมด {len(seen_subnets)} ไฟล์"")
